@@ -63,8 +63,9 @@ class FileAdder
 
     public function __construct(
         protected ?Filesystem $filesystem
-    ) {
-        $this->fileNameSanitizer = fn ($fileName) => $this->defaultSanitizer($fileName);
+    )
+    {
+        $this->fileNameSanitizer = fn($fileName) => $this->defaultSanitizer($fileName);
     }
 
     public function setSubject(Model $subject): self
@@ -102,7 +103,7 @@ class FileAdder
         }
 
         if ($file instanceof UploadedFile) {
-            $this->pathToFile = $file->getPath().'/'.$file->getFilename();
+            $this->pathToFile = $file->getPath() . '/' . $file->getFilename();
             $this->setFileName($file->getClientOriginalName());
             $this->mediaName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
 
@@ -110,7 +111,7 @@ class FileAdder
         }
 
         if ($file instanceof SymfonyFile) {
-            $this->pathToFile = $file->getPath().'/'.$file->getFilename();
+            $this->pathToFile = $file->getPath() . '/' . $file->getFilename();
             $this->setFileName(pathinfo($file->getFilename(), PATHINFO_BASENAME));
             $this->mediaName = pathinfo($file->getFilename(), PATHINFO_FILENAME);
 
@@ -204,7 +205,7 @@ class FileAdder
 
     public function withResponsiveImagesIf($condition): self
     {
-        $this->generateResponsiveImages = (bool) (is_callable($condition) ? $condition() : $condition);
+        $this->generateResponsiveImages = (bool)(is_callable($condition) ? $condition() : $condition);
 
         return $this;
     }
@@ -233,7 +234,7 @@ class FileAdder
     {
         $storage = Storage::disk($this->file->getDisk());
 
-        if (! $storage->exists($this->pathToFile)) {
+        if (!$storage->exists($this->pathToFile)) {
             throw FileDoesNotExist::create($this->pathToFile);
         }
 
@@ -297,7 +298,7 @@ class FileAdder
             return $this->toMediaCollectionFromTemporaryUpload($collectionName, $diskName, $this->fileName);
         }
 
-        if (! is_file($this->pathToFile)) {
+        if (!is_file($this->pathToFile)) {
             throw FileDoesNotExist::create($this->pathToFile);
         }
 
@@ -324,7 +325,7 @@ class FileAdder
         $media->mime_type = File::getMimeType($this->pathToFile);
         $media->size = filesize($this->pathToFile);
 
-        if (! is_null($this->order)) {
+        if (!is_null($this->order)) {
             $media->order_column = $this->order;
         }
 
@@ -411,7 +412,7 @@ class FileAdder
 
     protected function attachMedia(Media $media)
     {
-        if (! $this->subject->exists) {
+        if (!$this->subject->exists) {
             $this->subject->prepareToAttachMedia($media, $this);
 
             $class = $this->subject::class;
@@ -428,59 +429,63 @@ class FileAdder
         $this->processMediaItem($this->subject, $media, $this);
     }
 
-    protected function processMediaItem(HasMedia $model, Media $media, self $fileAdder)
+    protected function processMediaItem(HasMedia $model, Media $media, self $fileAdder, bool $saveToDisk = false)
     {
         $this->guardAgainstDisallowedFileAdditions($media);
 
         $this->checkGenerateResponsiveImages($media);
 
-        if (! $media->getConnectionName()) {
+        if (!$media->getConnectionName()) {
             $media->setConnection($model->getConnectionName());
         }
 
         $model->media()->save($media);
 
-        if ($fileAdder->file instanceof RemoteFile) {
-            $addedMediaSuccessfully = $this->filesystem->addRemote($fileAdder->file, $media, $fileAdder->fileName);
-        } else {
-            $addedMediaSuccessfully = $this->filesystem->add($fileAdder->pathToFile, $media, $fileAdder->fileName);
-        }
+        if ($saveToDisk) {
 
-        if (! $addedMediaSuccessfully) {
-            $media->forceDelete();
 
-            throw DiskCannotBeAccessed::create($media->disk);
-        }
-
-        if (! $fileAdder->preserveOriginal) {
             if ($fileAdder->file instanceof RemoteFile) {
-                Storage::disk($fileAdder->file->getDisk())->delete($fileAdder->file->getKey());
+                $addedMediaSuccessfully = $this->filesystem->addRemote($fileAdder->file, $media, $fileAdder->fileName);
             } else {
-                unlink($fileAdder->pathToFile);
-            }
-        }
-
-        if ($this->generateResponsiveImages && (new ImageGenerator())->canConvert($media)) {
-            $generateResponsiveImagesJobClass = config('media-library.jobs.generate_responsive_images', GenerateResponsiveImagesJob::class);
-
-            $job = new $generateResponsiveImagesJobClass($media);
-
-            if ($customConnection = config('media-library.queue_connection_name')) {
-                $job->onConnection($customConnection);
+                $addedMediaSuccessfully = $this->filesystem->add($fileAdder->pathToFile, $media, $fileAdder->fileName);
             }
 
-            if ($customQueue = config('media-library.queue_name')) {
-                $job->onQueue($customQueue);
+            if (!$addedMediaSuccessfully) {
+                $media->forceDelete();
+
+                throw DiskCannotBeAccessed::create($media->disk);
             }
 
-            dispatch($job);
-        }
+            if (!$fileAdder->preserveOriginal) {
+                if ($fileAdder->file instanceof RemoteFile) {
+                    Storage::disk($fileAdder->file->getDisk())->delete($fileAdder->file->getKey());
+                } else {
+                    unlink($fileAdder->pathToFile);
+                }
+            }
 
-        if ($collectionSizeLimit = optional($this->getMediaCollection($media->collection_name))->collectionSizeLimit) {
-            $collectionMedia = $this->subject->fresh()->getMedia($media->collection_name);
+            if ($this->generateResponsiveImages && (new ImageGenerator())->canConvert($media)) {
+                $generateResponsiveImagesJobClass = config('media-library.jobs.generate_responsive_images', GenerateResponsiveImagesJob::class);
 
-            if ($collectionMedia->count() > $collectionSizeLimit) {
-                $model->clearMediaCollectionExcept($media->collection_name, $collectionMedia->slice(-$collectionSizeLimit, $collectionSizeLimit));
+                $job = new $generateResponsiveImagesJobClass($media);
+
+                if ($customConnection = config('media-library.queue_connection_name')) {
+                    $job->onConnection($customConnection);
+                }
+
+                if ($customQueue = config('media-library.queue_name')) {
+                    $job->onQueue($customQueue);
+                }
+
+                dispatch($job);
+            }
+
+            if ($collectionSizeLimit = optional($this->getMediaCollection($media->collection_name))->collectionSizeLimit) {
+                $collectionMedia = $this->subject->fresh()->getMedia($media->collection_name);
+
+                if ($collectionMedia->count() > $collectionSizeLimit) {
+                    $model->clearMediaCollectionExcept($media->collection_name, $collectionMedia->slice(-$collectionSizeLimit, $collectionSizeLimit));
+                }
             }
         }
     }
@@ -490,22 +495,22 @@ class FileAdder
         $this->subject->registerMediaCollections();
 
         return collect($this->subject->mediaCollections)
-            ->first(fn (MediaCollection $collection) => $collection->name === $collectionName);
+            ->first(fn(MediaCollection $collection) => $collection->name === $collectionName);
     }
 
     protected function guardAgainstDisallowedFileAdditions(Media $media)
     {
         $file = PendingFile::createFromMedia($media);
 
-        if (! $collection = $this->getMediaCollection($media->collection_name)) {
+        if (!$collection = $this->getMediaCollection($media->collection_name)) {
             return;
         }
 
-        if (! ($collection->acceptsFile)($file, $this->subject)) {
+        if (!($collection->acceptsFile)($file, $this->subject)) {
             throw FileUnacceptableForCollection::create($file, $collection, $this->subject);
         }
 
-        if (! empty($collection->acceptsMimeTypes) && ! in_array($file->mimeType, $collection->acceptsMimeTypes)) {
+        if (!empty($collection->acceptsMimeTypes) && !in_array($file->mimeType, $collection->acceptsMimeTypes)) {
             throw FileUnacceptableForCollection::create($file, $collection, $this->subject);
         }
     }
@@ -529,7 +534,7 @@ class FileAdder
         $media->name = $this->mediaName;
         $media->custom_properties = $this->customProperties;
 
-        if (! is_null($this->order)) {
+        if (!is_null($this->order)) {
             $media->order_column = $this->order;
         }
 
