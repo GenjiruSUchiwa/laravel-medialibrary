@@ -142,9 +142,9 @@ trait InteractsWithMedia
             throw InvalidUrl::doesNotStartWithProtocol($url);
         }
 
-        $downloader = config('media-library.media_downloader', DefaultDownloader::class);
+      $downloader = config('media-library.media_downloader', DefaultDownloader::class);
         $temporaryFile = (new $downloader())->getTempFile($url);
-        $this->guardAgainstInvalidMimeType($temporaryFile, $allowedMimeTypes);
+        //$this->guardAgainstInvalidMimeType($temporaryFile, $allowedMimeTypes);
 
         $filename = basename(parse_url($url, PHP_URL_PATH));
         $filename = urldecode($filename);
